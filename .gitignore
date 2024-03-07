@@ -1,0 +1,7 @@
+# Ignore all files and folders except the .py files mentioned
+*
+
+# Exclude the .gitignore and .py files from being ignored
+!.gitignore
+!SQP.py
+!SQP_analyze.py
