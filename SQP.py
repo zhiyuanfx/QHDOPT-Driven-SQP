@@ -30,21 +30,6 @@ def process_original_bounds(nlp):
     return bounds
 
 def get_x0(x0, bounds):
-    # x0 = []
-    # for lower, upper in bounds:
-    #     if np.isinf(lower) and np.isinf(upper):
-    #         x0_value = 0  
-    #     elif np.isinf(lower):
-    #         x0_value = min(upper, 0)
-    #     elif np.isinf(upper):
-    #         x0_value = max(lower, 0)
-    #     elif lower < 0 and upper > 0:
-    #         x0_value = 0
-    #     elif upper < 0:
-    #         x0_value = upper
-    #     else:
-    #         x0_value = lower
-    #     x0.append(x0_value)
     feasible_x0 = []
     for x, (lower, upper) in zip(x0, bounds):
         if x < lower:
@@ -99,7 +84,6 @@ def update_x(x, d, x_bound):
     return x_next.tolist()
 
 def get_total_time(res):
-    # total_runtime = res.info["compile_time"] + res.info["backend_time"] + res.info["decoding_time"]
     if res.info["backend_time"] == 0:
         return res.info['fine_tuning_time']
     else:
@@ -107,9 +91,9 @@ def get_total_time(res):
         total_runtime += res.info['fine_tuning_time'] if res.info["fine_tune_status"] else 0
         return total_runtime
 
-def classical_sqp(problem_name, gx_tolerance = 1e-4, box = 5, sample_number = 10):
+def sqp(problem_name, solver, api_key = None, gx_tolerance = 1e-4, max_box = 5, sample_number = 10):
     """
-    Returns the result of sqp using classical solver as a map with keys:
+    Returns the result of sqp using classical or qhdopt solver as a map with keys:
     dimension, solution, minimum, total_time, and iteration_num
     """
     m = extract_model(problem_name)
@@ -119,11 +103,12 @@ def classical_sqp(problem_name, gx_tolerance = 1e-4, box = 5, sample_number = 10
     m = extract_model(problem_name, np.array(x))
     Hx, min, gx = (m[key] for key in ("Hx", "fx", "gx"))
     
+    box = 3
     total_time = 0
     iteration_num = 0
     result = dict()
-    visited = set()
-    visited.add(tuple(np.round(x, 4)))
+    # visited = set()
+    # visited.add(tuple(np.round(x, 4)))
     
     print(problem_name, "cls")
     while True:
@@ -132,73 +117,40 @@ def classical_sqp(problem_name, gx_tolerance = 1e-4, box = 5, sample_number = 10
         x_bound = get_new_bound(x, old_bound, box_size = box)
         d_bound = get_d_bound(x, x_bound)
         model = QHD.QP(Hx, gx, bounds = d_bound)
-        response = model.classically_optimize(initial_guess = sample_number)
+        if solver == "classical":
+            response = model.classically_optimize(initial_guess = sample_number)
+        elif solver == "qhdopt":
+            if not api_key:
+                raise ValueError("API key is required for qhdopt solver.")
+            model.dwave_setup(resolution = 8, api_key = api_key, shots = sample_number) 
+            response = model.optimize()
+        else:
+            raise ValueError(f"Unsupported solver '{solver}'. Use 'classical' or 'qhdopt'.")
         total_time += get_total_time(response)
         d = response.minimizer
         xtemp = update_x(x, d, x_bound)
         m = extract_model(problem_name, np.array(xtemp))
         Hxtemp, mintemp, gxtemp = (m[key] for key in ("Hx", "fx", "gx"))
-        t = tuple(np.round(xtemp, 4))
-        if t in visited:
-            break
-        visited.add(t)
-        x = xtemp
-        Hx = Hxtemp
-        min = mintemp
-        gx = gxtemp
+        rho = (min - mintemp) / (-d.T @ gx - 0.5 * (d.T @ Hx @ d))
+        if rho < 0.25:
+            box *= 0.25
+        elif rho > 0.75 and abs(np.linalg.norm(np.array(d), ord=2) - box) < gx_tolerance:
+            box = min(2 * box, max_box)
+        if rho > 0:
+            x = xtemp
+            Hx = Hxtemp
+            temp = min
+            min = mintemp
+            gx = gxtemp
+            if abs(temp - mintemp) < gx_tolerance:
+                break
+        # t = tuple(np.round(xtemp, 4))
+        # if t in visited:
+        #     break
+        # visited.add(t)
         if np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance:
             break
             
-    result["dimension"] = len(nlp["meta"]["x0"])
-    result["solution"] = x
-    result["minimum"] = min
-    result["total_time"] = total_time
-    result["iteration_num"] = iteration_num
-    return result
-
-def quantum_sqp(problem_name, api_key, gx_tolerance = 1e-4, box = 5, sample_number = 10):
-    """
-    Returns the result of sqp using qhdopt as a map with keys:
-    dimension, solution, minimum, total_time, and iteration_num
-    """
-    m = extract_model(problem_name)
-    nlp = m["nlp"]
-    old_bound = process_original_bounds(nlp)
-    x = get_x0(nlp["meta"]["x0"], old_bound)
-    m = extract_model(problem_name, np.array(x))
-    Hx, min, gx = (m[key] for key in ("Hx", "fx", "gx"))
-    
-    total_time = 0
-    iteration_num = 0
-    result = dict()
-    visited = set()
-    visited.add(tuple(np.round(x, 4)))
-    
-    print(problem_name, "qua")
-    while True:
-        iteration_num += 1
-        print(iteration_num, x, gx)
-        x_bound = get_new_bound(x, old_bound, box_size = box)
-        d_bound = get_d_bound(x, x_bound)
-        model = QHD.QP(Hx, gx, bounds = d_bound)
-        model.dwave_setup(resolution = 8, api_key = api_key, shots = sample_number) 
-        response = model.optimize()
-        total_time += get_total_time(response)
-        d = response.minimizer
-        xtemp = update_x(x, d, x_bound)
-        m = extract_model(problem_name, np.array(xtemp))
-        Hxtemp, mintemp, gxtemp = (m[key] for key in ("Hx", "fx", "gx"))
-        t = tuple(np.round(xtemp, 4))
-        if t in visited:
-            break
-        visited.add(t)
-        x = xtemp
-        Hx = Hxtemp
-        min = mintemp
-        gx = gxtemp
-        if np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance:
-            break
-    
     result["dimension"] = len(nlp["meta"]["x0"])
     result["solution"] = x
     result["minimum"] = min
