@@ -198,21 +198,6 @@ def quantum_sqp(problem_name, api_key, gx_tolerance = 1e-4, box = 5, sample_numb
         gx = gxtemp
         if np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance:
             break
-    # while not check_stop(gx, gx_tolerance, fx_tolerance, cur_minimum, pre_minimum):
-    #     iteration_num += 1
-    #     print(iteration_num, x, gx)
-    #     x_bound = get_new_bound(x, old_bound, box_size = box)
-    #     d_bound = get_d_bound(x, x_bound)
-    #     model = QHD.QP(Hx, gx, bounds = d_bound)
-    #     ak = api_key
-    #     model.dwave_setup(resolution = 8, api_key = ak, shots = sample_number) 
-    #     response = model.optimize()
-    #     total_time += get_total_time(response)
-    #     d = response.minimizer
-    #     x = update_x(x, d, x_bound)
-    #     m = extract_model(problem_name, np.array(x))
-    #     pre_minimum = cur_minimum
-    #     Hx, cur_minimum, gx = (m[key] for key in ("Hx", "fx", "gx"))
     
     result["dimension"] = len(nlp["meta"]["x0"])
     result["solution"] = x
