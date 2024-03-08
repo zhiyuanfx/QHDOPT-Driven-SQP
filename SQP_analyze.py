@@ -10,8 +10,8 @@ def read_test_problems(file_path):
     return problems
 
 def run_one_experiment(problem_name, gx_tolerance, box, sample_number, api_key):
-    classical_result = classical_sqp(problem_name, gx_tolerance, box=box, sample_number=sample_number)
-    quantum_result = quantum_sqp(problem_name, api_key, gx_tolerance, box=box, sample_number=sample_number)
+    classical_result = sqp(problem_name, gx_tolerance, box=box, sample_number=sample_number)
+    quantum_result = sqp(problem_name, api_key, gx_tolerance, box=box, sample_number=sample_number)
     
     runtime_dif = classical_result['total_time'] - quantum_result['total_time']
     runtime_percent_dif = (runtime_dif / classical_result['total_time']) * 100
