@@ -2,10 +2,6 @@ from Problems.Julia_Interface.CUTEst_Extractor import extract_model
 import numpy as np 
 from qhdopt import QHD
 
-
-def check_stop(gx, gx_tolerance, cur_min, pre_min):
-    return np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance or cur_min > pre_min
-
 def process_original_bounds(nlp):
     """
     Returns the bounds (as list of tuples) of the given optimization problem.
@@ -91,7 +87,7 @@ def get_total_time(res):
         total_runtime += res.info['fine_tuning_time'] if res.info["fine_tune_status"] else 0
         return total_runtime
 
-def sqp(problem_name, solver, api_key = None, gx_tolerance = 1e-4, max_box = 5, sample_number = 10):
+def sqp(problem_name, solver, gx_tolerance = 1e-4, api_key = None, max_box = 5, sample_number = 10):
     """
     Returns the result of sqp using classical or qhdopt solver as a map with keys:
     dimension, solution, minimum, total_time, and iteration_num
@@ -101,7 +97,7 @@ def sqp(problem_name, solver, api_key = None, gx_tolerance = 1e-4, max_box = 5, 
     old_bound = process_original_bounds(nlp)
     x = get_x0(nlp["meta"]["x0"], old_bound)
     m = extract_model(problem_name, np.array(x))
-    Hx, min, gx = (m[key] for key in ("Hx", "fx", "gx"))
+    Hx, minimum, gx = (m[key] for key in ("Hx", "fx", "gx"))
     
     box = 3
     total_time = 0
@@ -110,7 +106,7 @@ def sqp(problem_name, solver, api_key = None, gx_tolerance = 1e-4, max_box = 5, 
     # visited = set()
     # visited.add(tuple(np.round(x, 4)))
     
-    print(problem_name, "cls")
+    print(problem_name, "cls" if not api_key else "qua")
     while True:
         iteration_num += 1
         print(iteration_num, x, gx)
@@ -131,29 +127,27 @@ def sqp(problem_name, solver, api_key = None, gx_tolerance = 1e-4, max_box = 5, 
         xtemp = update_x(x, d, x_bound)
         m = extract_model(problem_name, np.array(xtemp))
         Hxtemp, mintemp, gxtemp = (m[key] for key in ("Hx", "fx", "gx"))
-        rho = (min - mintemp) / (-d.T @ gx - 0.5 * (d.T @ Hx @ d))
+        rho = (minimum - mintemp) / (-d.T @ gx - 0.5 * (d.T @ Hx @ d)) if np.linalg.norm(d, ord=2) > gx_tolerance else 0.5
+        temp = minimum
         if rho < 0.25:
             box *= 0.25
-        elif rho > 0.75 and abs(np.linalg.norm(np.array(d), ord=2) - box) < gx_tolerance:
+        elif rho > 0.75 and abs(np.linalg.norm(d, ord=2) - box) < 1e-2:
             box = min(2 * box, max_box)
-        if rho > 0:
+        if minimum > mintemp:
             x = xtemp
             Hx = Hxtemp
-            temp = min
-            min = mintemp
+            minimum = mintemp
             gx = gxtemp
-            if abs(temp - mintemp) < gx_tolerance:
-                break
+        if abs(temp - mintemp) < gx_tolerance or np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance:
+            break
         # t = tuple(np.round(xtemp, 4))
         # if t in visited:
         #     break
         # visited.add(t)
-        if np.linalg.norm(np.array(gx), ord=2) <= gx_tolerance:
-            break
             
     result["dimension"] = len(nlp["meta"]["x0"])
     result["solution"] = x
-    result["minimum"] = min
+    result["minimum"] = minimum
     result["total_time"] = total_time
     result["iteration_num"] = iteration_num
     return result

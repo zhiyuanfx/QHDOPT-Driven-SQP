@@ -1,4 +1,4 @@
-from SQP import classical_sqp, quantum_sqp
+from SQP import sqp
 import pandas as pd
 
 def read_test_problems(file_path):
@@ -10,8 +10,8 @@ def read_test_problems(file_path):
     return problems
 
 def run_one_experiment(problem_name, gx_tolerance, box, sample_number, api_key):
-    classical_result = sqp(problem_name, gx_tolerance, box=box, sample_number=sample_number)
-    quantum_result = sqp(problem_name, api_key, gx_tolerance, box=box, sample_number=sample_number)
+    classical_result = sqp(problem_name, solver="classical", gx_tolerance = gx_tolerance, api_key=None, max_box=box, sample_number=sample_number)
+    quantum_result = sqp(problem_name, solver="qhdopt", api_key=api_key, gx_tolerance = gx_tolerance, max_box=box, sample_number=sample_number)
     
     runtime_dif = classical_result['total_time'] - quantum_result['total_time']
     runtime_percent_dif = (runtime_dif / classical_result['total_time']) * 100
@@ -54,10 +54,10 @@ def run_multiple_experiment(api_key, input_file, file, gx_tolerance = 1e-4, star
 def main():
     ak = "DEV-7aa39ca5c55f857048c112d91c8b819ce75b525f"
     input_file = "Problems/i1.txt"
-    file = "SQP_Results/test1.csv"
-    sidx = 6
-    eidx = 6
-    box = 3
+    file = "SQP_Results/test.csv"
+    sidx = 49
+    eidx = 49
+    box = 5
     guess_num = 10
     gx_tolerance = 1e-4
     run_multiple_experiment(ak, input_file, file, gx_tolerance=gx_tolerance, start_idx=sidx, end_idx=eidx, box_size=box, shots=guess_num, repeat=2)
